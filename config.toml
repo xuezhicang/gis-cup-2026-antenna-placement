@@ -1,8 +1,15 @@
 # Settings for run.py.  Edit this file, then run:  python run.py
 #
-# Relative paths are relative to this file.  Keys you leave out use the
-# defaults shown here.  The keys in the step sections are the command-line
-# options of that step's script (edge_spacing -> --edge-spacing).
+# This file runs the full method on the competition problem: several greedy
+# solutions per sub-problem, a diverse choice of seeds, and 4 parallel
+# processes.  That needs MPI (option A in README.md installs it).
+#   - No MPI, or just checking the install?  Use config_quick.toml (one core).
+#   - One core with this file: set  workers = 1  and  seeds = 1.
+#
+# Relative paths are relative to this file.  Keys you leave out fall back to
+# run.py's built-in defaults (one core, one solution per sub-problem).  The
+# keys in the step sections are the command-line options of that step's
+# script (edge_spacing -> --edge-spacing).
 
 # ---------------------------------------------------------------------------
 # The problem: which buildings, which coverage thresholds, how many antennas.
@@ -20,11 +27,12 @@ building_id_column = "id"
 [run]
 output_dir = "outputs"
 # Number of parallel processes.  1 needs no MPI installation; more than 1
-# needs MPI (e.g. OpenMPI) and the mpi4py package.  Every process loads its
-# own copy of the visibility table, so memory grows with this number.
-# All steps use it; in step 4 it is also the number of temperature profiles.
-# See "Parallel runs" in README.md.
-workers = 1
+# needs MPI (e.g. OpenMPI) and the mpi4py package.  All steps use it; in step 4
+# the processes are shared between the seeds (see [step4_annealing]).
+# Every process loads its own copy of the visibility table: roughly 3 GB each
+# for the competition data at edge_spacing = 20 (estimate), so 4 workers need
+# about 12 GB of memory.  See "Parallel runs" in README.md.
+workers = 4
 random_seed = 42
 mpi_launcher = "mpiexec"
 mpi_args = []          # extra launcher options, e.g. ["--oversubscribe"]
@@ -42,7 +50,7 @@ edge_spacing = 20.0
 max_points = 0
 
 # ---------------------------------------------------------------------------
-# Step 2: build a first solution for every (tau, k).
+# Step 2: build first solutions for every (tau, k).
 # ---------------------------------------------------------------------------
 [step2_greedy]
 # "two_step": greedy with a two-step lookahead (good for any k).
@@ -51,19 +59,18 @@ max_points = 0
 #               run in parallel).
 # The method applies to every k above.  See "Step 2" in README.md.
 method = "two_step"
-# Weight of the hard score (buildings reaching tau) against the soft score
-# (partial progress towards tau).  1.0 = hard score only.
-alpha = 0.8
-# two_step: number of candidates kept at each lookahead step.  Each step
-# costs about (1 + lookahead_width) evaluations of all candidates, so 1 is
-# fastest; larger values look further but are slower.
-lookahead_width = 3
-# alpha and lookahead_width may also be lists.  Every combination then gives
-# one greedy solution per sub-problem (multistart: one run per alpha), e.g.
-#   alpha = [0.4, 0.6, 0.8, 1.0]
-#   lookahead_width = [1, 3, 5]      -> 12 solutions per sub-problem
-# Step 2 then takes about 12 times as long; with workers > 1 the runs are
-# shared between the processes.
+# alpha: weight of the hard score (buildings reaching tau) against the soft
+# score (partial progress towards tau); 1.0 = hard score only.
+# lookahead_width (two_step): candidates kept at each lookahead step.  Each
+# step costs about (1 + lookahead_width) evaluations of all candidates.
+# Both may be one value or a list; every combination gives one solution per
+# sub-problem, so 3 x 2 = 6 solutions here.  Step 2 time grows with the
+# number of combinations; with workers > 1 the runs are shared between the
+# processes.  The competition run used alpha = [0.4, 0.6, 0.8, 1.0] and
+# lookahead_width = [1, 5, 10] (12 solutions, several times slower).
+# One solution only:  alpha = 0.8  and  lookahead_width = 3.
+alpha = [0.6, 0.8, 1.0]
+lookahead_width = [1, 3]
 # multistart: the starts are the best grid_top_k points of every grid cell,
 # plus the best global_top_fraction of all candidates (0.01 = top 1%), plus
 # random_count randomly chosen candidates.
@@ -73,16 +80,16 @@ global_top_fraction = 0.0
 random_count = 0
 
 # ---------------------------------------------------------------------------
-# Step 3: improve each solution by swapping one antenna at a time.
+# Step 3: improve solutions by swapping one antenna at a time.
 # ---------------------------------------------------------------------------
 [step3_point_swap]
 enabled = true
 # How many of the best distinct step-2 solutions to improve (one after
-# another), per sub-problem.  The time limit below applies to each of them.
-solutions = 1
+# another), per sub-problem.  The limits below apply to each of them.
+solutions = 4
 beam_width = 1
 max_generations = 10   # 0 = until no swap improves the solution
-max_seconds = 300      # per sub-problem; 0 = no time limit
+max_seconds = 120      # per solution; 0 = no time limit
 
 # ---------------------------------------------------------------------------
 # Step 4: simulated annealing.  It always keeps the best solution found, so a
@@ -92,10 +99,12 @@ max_seconds = 300      # per sub-problem; 0 = no time limit
 enabled = true
 max_seconds = 600      # per sub-problem
 # Number of different starting solutions (seeds), chosen from the step-3
-# results by score and building diversity (see "Seed selection" in
-# README.md).  The workers are shared equally: workers / seeds temperature
-# profiles per seed, so seeds must divide workers (workers = 1 -> seeds = 1).
-seeds = 1
+# results by score and building diversity (see "Several solutions and seed
+# selection" in README.md).  The processes are shared equally:
+#   temperatures per seed = workers / seeds
+# so seeds must divide workers.  Here 4 / 2 = 2 temperatures (x0.5 and x2.0)
+# for each seed; seeds = 1 would give one seed 4 temperatures.
+seeds = 2
 # Seeds are normally taken from solutions within this fraction of the best
 # score (0.05 = 5%); the limit is relaxed if too few qualify.
 seed_score_tolerance = 0.05

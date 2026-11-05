@@ -68,8 +68,10 @@ applies to every `k` in the config.
 
 ### Several solutions and seed selection
 
-By default every sub-problem follows a single path: one greedy solution, one
-swap run, one annealing start. You can widen it in three places:
+With `run.py`'s built-in defaults (and in `config_quick.toml`), every
+sub-problem follows a single path: one greedy solution, one swap run, one
+annealing start. `config.toml` widens it in three places (6 parameter sets,
+4 swapped solutions, 2 seeds):
 
 1. **Step 2, several parameter sets.** Give `alpha` and/or `lookahead_width`
    as lists, e.g. `alpha = [0.4, 0.6, 0.8, 1.0]` and
@@ -113,12 +115,30 @@ Every process runs its own annealing search for the full `max_seconds`,
 starting from its seed (the step-3 solution when `seeds = 1`); the best result
 of all processes is kept.
 
-- **Temperature profiles.** With `workers = N` and `seeds = S` there are
-  `N / S` profiles per seed. Each multiplies the starting temperature by a
-  factor between ×0.5 (cooler, stays close to good solutions) and ×2.0
-  (hotter, explores more), evenly spaced on a log scale
-  (`temperature_log_spread = 0.7`). One profile per seed runs only ×1.0; five
-  run ×0.50, 0.70, 1.00, 1.42 and 2.01.
+- **Temperature profiles: workers ÷ seeds per seed.** Every process runs one
+  seed at one temperature, so `workers = seeds × temperatures`. You do not set
+  the number of temperatures yourself; `run.py` computes it. Each profile
+  multiplies the starting temperature by a factor between ×0.5 (cooler, stays
+  close to good solutions) and ×2.0 (hotter, explores more), evenly spaced on
+  a log scale (`temperature_log_spread = 0.7` sets the range). Every seed gets
+  the same set:
+
+  | `workers` | `seeds` | Temperatures per seed | Multipliers |
+  |---|---|---|---|
+  | 1 | 1 | 1 | ×1.00 |
+  | 4 | 1 | 4 | ×0.50, 0.79, 1.26, 2.01 |
+  | 4 | 2 | 2 | ×0.50, 2.01 (`config.toml`) |
+  | 4 | 4 | 1 | ×1.00 |
+  | 8 | 2 | 4 | ×0.50, 0.79, 1.26, 2.01 |
+
+  With a fixed number of workers, you trade seeds against temperatures: more
+  seeds start from more different solutions, more temperatures search each
+  start in more ways.
+- **Fewer distinct solutions than seeds.** If a sub-problem has fewer
+  distinct solutions than `seeds` (for example when several parameter sets
+  lead to the same antennas), `run.py` uses fewer seeds and gives each of
+  them more temperatures, and prints a note. With `workers = 4`, `seeds = 2`
+  and only one distinct solution, that solution gets all 4 temperatures.
 - **Calibrated starting temperature.** At the start of a cycle, losing one
   serviced building is accepted with probability 10%, falling to 0.01% at the
   end. Soft-score losses are scaled from a few trial moves: a typical loss is
@@ -203,18 +223,28 @@ Python they were built for.
 
 ## Quick start
 
-First check that everything works with a small run (sample data, two
-sub-problems, short time limits):
+There are two ready-made settings files:
+
+| File | Purpose | Needs MPI | Time |
+|---|---|---|---|
+| `config_quick.toml` | Check that everything works: sample data, first 1000 candidates, 2 sub-problems, one core | No | About 2 minutes |
+| `config.toml` | The full method on the competition problem: 6 greedy parameter sets, 4 swapped solutions and 2 seeds per sub-problem, 4 processes | Yes | About 6 hours (estimate, see below) |
+
+First run the quick check:
 
 ```bash
 python3 run.py --config config_quick.toml
 ```
 
-Then edit `config.toml` and run the full problem:
+Then run the full problem:
 
 ```bash
 python3 run.py
 ```
+
+Without MPI, or to use a single core, set `workers = 1` and `seeds = 1` in
+`config.toml` (seeds must divide workers). For a much faster single run, also
+set `alpha = 0.8`, `lookahead_width = 3` and `solutions = 1`.
 
 ## Configuration
 
@@ -295,9 +325,16 @@ Expect these numbers to scale roughly with the number of candidates. The
 memory per process, about 3 CPU-hours for step 1 (divided by `workers`), and
 around 45 minutes of greedy per `tau` value for k = 484.
 
+For `config.toml` as shipped (4 workers, 6 parameter sets, 4 swapped
+solutions, 2 seeds, 600 s of annealing), the same scaling gives roughly
+45 minutes for step 1, 2 hours for step 2, up to 1.2 hours for step 3 and
+1.5 hours for step 4: about **6 hours** in total, with about **12 GB** of
+memory. These are estimates from the sample measurements, not measured on the
+competition data.
+
 To go faster: use more `workers` (if memory allows), a larger
-`edge_spacing`, or a smaller `lookahead_width`. `config_quick.toml` finishes
-in a few minutes.
+`edge_spacing`, fewer or smaller `lookahead_width` values, fewer `alpha`
+values, or fewer `solutions`. `config_quick.toml` finishes in a few minutes.
 
 Step 1 is cached, so it only runs again when the GeoJSON or the step-1
 settings change.
