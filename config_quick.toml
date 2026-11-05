@@ -1,0 +1,32 @@
+# A small run to check that everything works:  python run.py --config config_quick.toml
+# Uses the sample dataset, two sub-problems and short time limits.
+
+[problem]
+geojson = "data/GIS-cup-sample-dataset.geojson"
+tau = [0.5]
+k = [5, 20]
+
+[run]
+output_dir = "outputs_quick"
+workers = 1
+
+[step1_visibility]
+edge_spacing = 20.0
+max_points = 1000      # only the first 1000 candidates, so step 1 takes about a minute
+
+[step2_greedy]
+method = "two_step"
+alpha = 0.8
+lookahead_width = 3
+
+[step3_point_swap]
+max_generations = 3
+max_seconds = 60
+
+[step4_annealing]
+max_seconds = 30
+
+# 30 s is short, so use shorter cooling cycles (see "Step 4" in README.md).
+[step4_annealing.advanced]
+cycle_iterations = 3000
+stagnation_iterations = 3000

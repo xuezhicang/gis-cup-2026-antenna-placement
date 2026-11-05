@@ -1,0 +1,117 @@
+# Settings for run.py.  Edit this file, then run:  python run.py
+#
+# Relative paths are relative to this file.  Keys you leave out use the
+# defaults shown here.  The keys in the step sections are the command-line
+# options of that step's script (edge_spacing -> --edge-spacing).
+
+# ---------------------------------------------------------------------------
+# The problem: which buildings, which coverage thresholds, how many antennas.
+# Every tau x k combination is solved as a separate sub-problem.
+# ---------------------------------------------------------------------------
+[problem]
+geojson = "data/GIS-cup-competition-dataset.geojson"
+tau = [0.32, 0.49, 0.68]
+k = [9, 49, 484]
+building_id_column = "id"
+
+# ---------------------------------------------------------------------------
+# How to run.
+# ---------------------------------------------------------------------------
+[run]
+output_dir = "outputs"
+# Number of parallel processes.  1 needs no MPI installation; more than 1
+# needs MPI (e.g. OpenMPI) and the mpi4py package.  Every process loads its
+# own copy of the visibility table, so memory grows with this number.
+# All steps use it; in step 4 it is also the number of temperature profiles.
+# See "Parallel runs" in README.md.
+workers = 1
+random_seed = 42
+mpi_launcher = "mpiexec"
+mpi_args = []          # extra launcher options, e.g. ["--oversubscribe"]
+
+# ---------------------------------------------------------------------------
+# Step 1: candidate antenna points and their visible boundary segments.
+# The result is cached and reused until the GeoJSON or these settings change.
+# ---------------------------------------------------------------------------
+[step1_visibility]
+# Distance between candidate points along each building edge, in metres.
+# Building corners are always candidates.  Smaller = more candidates = better
+# solutions, but slower and more memory.  (The competition run used 5.)
+edge_spacing = 20.0
+# Use only the first N candidate points (0 = all).  Handy for quick tests.
+max_points = 0
+
+# ---------------------------------------------------------------------------
+# Step 2: build a first solution for every (tau, k).
+# ---------------------------------------------------------------------------
+[step2_greedy]
+# "two_step": greedy with a two-step lookahead (good for any k).
+# "multistart": many greedy runs from different first antennas (only
+#               practical for small k, e.g. k <= 20; needs workers >= 3 to
+#               run in parallel).
+# The method applies to every k above.  See "Step 2" in README.md.
+method = "two_step"
+# Weight of the hard score (buildings reaching tau) against the soft score
+# (partial progress towards tau).  1.0 = hard score only.
+alpha = 0.8
+# two_step: number of candidates kept at each lookahead step.  Each step
+# costs about (1 + lookahead_width) evaluations of all candidates, so 1 is
+# fastest; larger values look further but are slower.
+lookahead_width = 3
+# alpha and lookahead_width may also be lists.  Every combination then gives
+# one greedy solution per sub-problem (multistart: one run per alpha), e.g.
+#   alpha = [0.4, 0.6, 0.8, 1.0]
+#   lookahead_width = [1, 3, 5]      -> 12 solutions per sub-problem
+# Step 2 then takes about 12 times as long; with workers > 1 the runs are
+# shared between the processes.
+# multistart: the starts are the best grid_top_k points of every grid cell,
+# plus the best global_top_fraction of all candidates (0.01 = top 1%), plus
+# random_count randomly chosen candidates.
+grid_size_meters = 200.0
+grid_top_k = 5
+global_top_fraction = 0.0
+random_count = 0
+
+# ---------------------------------------------------------------------------
+# Step 3: improve each solution by swapping one antenna at a time.
+# ---------------------------------------------------------------------------
+[step3_point_swap]
+enabled = true
+# How many of the best distinct step-2 solutions to improve (one after
+# another), per sub-problem.  The time limit below applies to each of them.
+solutions = 1
+beam_width = 1
+max_generations = 10   # 0 = until no swap improves the solution
+max_seconds = 300      # per sub-problem; 0 = no time limit
+
+# ---------------------------------------------------------------------------
+# Step 4: simulated annealing.  It always keeps the best solution found, so a
+# longer run can only help.
+# ---------------------------------------------------------------------------
+[step4_annealing]
+enabled = true
+max_seconds = 600      # per sub-problem
+# Number of different starting solutions (seeds), chosen from the step-3
+# results by score and building diversity (see "Seed selection" in
+# README.md).  The workers are shared equally: workers / seeds temperature
+# profiles per seed, so seeds must divide workers (workers = 1 -> seeds = 1).
+seeds = 1
+# Seeds are normally taken from solutions within this fraction of the best
+# score (0.05 = 5%); the limit is relaxed if too few qualify.
+seed_score_tolerance = 0.05
+
+# Optional fine-tuning; see "Step 4" in README.md and
+# step4_annealing/simulated_annealing.py --help.  Values shown are the defaults.
+# [step4_annealing.advanced]
+# One cooling cycle lasts cycle_iterations iterations, then the temperature is
+# raised again; it is also raised after stagnation_iterations iterations
+# without a new best.  For short max_seconds, lower both so a few cycles fit
+# (the log line "FINISHED iteration=..." shows how many iterations ran).
+# cycle_iterations = 20000
+# stagnation_iterations = 20000
+# Spread of the per-process temperature profiles (0.7 = x0.5 to x2.0).
+# temperature_log_spread = 0.7
+# Share of the three kinds of moves.
+# one_swap_probability = 0.75
+# two_swap_probability = 0.20
+# ruin_probability = 0.05

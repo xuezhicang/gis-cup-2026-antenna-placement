@@ -1,0 +1,11 @@
+geopandas
+numpy
+pandas
+pyogrio
+shapely
+pybind11
+tomli; python_version < "3.11"
+
+# Optional: only needed when workers > 1 in config.toml.
+# Requires an MPI installation such as OpenMPI (macOS: brew install open-mpi).
+# mpi4py

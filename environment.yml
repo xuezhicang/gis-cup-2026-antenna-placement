@@ -1,0 +1,20 @@
+# conda / mamba environment for this project (all packages from conda-forge).
+#
+#   mamba env create -f environment.yml      # or: conda env create -f environment.yml
+#   mamba activate gis-cup-2026              # or: conda activate gis-cup-2026
+#
+# Keep this list in sync with requirements.txt.
+name: gis-cup-2026
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - geopandas
+  - numpy
+  - pandas
+  - pyogrio
+  - shapely
+  - pybind11
+  - cxx-compiler   # C++17 compiler used by build_cpp.sh
+  - openmpi        # MPI, only needed when workers > 1
+  - mpi4py

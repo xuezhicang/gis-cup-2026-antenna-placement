@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Compiled C++ extensions
+build/
+*.so
+*.pyd
+
+# Downloaded data (fetch with data/download_data.sh)
+data/*.geojson
+data/competition-parameters.txt
+data/*.part
+
+# Run outputs
+outputs/
+outputs_*/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
