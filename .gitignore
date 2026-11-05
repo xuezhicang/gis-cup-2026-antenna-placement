@@ -9,9 +9,8 @@ build/
 *.so
 *.pyd
 
+
 # Downloaded data (fetch with data/download_data.sh)
-data/*.geojson
-data/competition-parameters.txt
 data/*.part
 
 # Run outputs
